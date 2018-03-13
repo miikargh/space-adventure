@@ -13,7 +13,8 @@
   ; setup function returns initial state.
   {:x 78
    :y 40
-   :laser-shots []})
+   :laser-shots []
+   :asteroids []})
 
 (defn draw-triangle [x y]
   (let [size-x (:x spaceship-size)
@@ -27,30 +28,100 @@
     (q/triangle x1 y1 x2 y2 x3 y3)))
 
 (defn draw-laser-shots [laser-shots]
-  (doseq [coors laser-shots]
-    (q/point (first coors) (second coors))))
+  (doseq [shot laser-shots]
+    (q/point (:x shot) (:y shot))))
 
-(defn update-laser-shots [shots shot]
-  (let [[x y] shot]
+(defn move-laser-shots [shots shot]
+  (let [x (:x shot)
+        y (:y shot)]
     (if (> y 0)
-      (conj shots [x (- y 16)])
+      (conj shots {:x x :y (- y 16)})
       shots)))
 
-(defn update-state [state]
+(defn update-laser-shots [state]
   (let [laser-shots (:laser-shots state)]
-    ;; (println laser-shots)
     (if (not (empty? laser-shots))
-      (assoc state :laser-shots (reduce update-laser-shots [] laser-shots))
+      (assoc state :laser-shots (reduce move-laser-shots [] laser-shots))
       (identity state))))
+
+(defn generate-asteroid [state]
+  (let [asteroids (:asteroids state)
+        new-asteroid {:x (rand (:x size))
+                      :y 0
+                      :size (+ 10 (rand 95))
+                      :speed (+ (rand 5) 1)}]
+    (if (and (> (rand) 0.8) (< (count asteroids) 10))
+      (assoc state :asteroids (conj asteroids new-asteroid))
+      (identity state))))
+
+(defn update-asteroids [state]
+  (let [asteroids (:asteroids state)]
+    (assoc state :asteroids (map #(assoc % :y (+ (:y %) (:speed %))) asteroids))))
+
+(defn laser-asteroid-coll? [[laser asteroid]]
+  "Do the given laser and asteroid collide?"
+  (let [x-l (:x laser)
+        y-l (:y laser)
+        x-a (:x asteroid)
+        y-a (:y asteroid)
+        rad-a (/ (:size asteroid) 2)]
+    (and (<= y-l (+ y-a rad-a))
+         (> x-l (- x-a rad-a))
+         (< x-l (+ x-a rad-a)))))
+
+(defn laser-hits [state]
+  "Checks if laser shots collide with asteroids and destoys the asteroids if so."
+  (let [asteroids (:asteroids state)
+        lasers (:laser-shots state)
+        new-asteroids (reduce (fn [final-asteroids asteroid]
+                                (let [laser-asteroids (for [a [asteroid]
+                                                            l lasers]
+                                                        (vector l a))]
+                                  (if (some laser-asteroid-coll? laser-asteroids)
+                                    final-asteroids
+                                    (conj final-asteroids asteroid))))
+                              []
+                              asteroids)]
+    (if (empty? lasers)
+      (identity state)
+      (assoc state :asteroids new-asteroids))))
+
+(defn remove-old-asteroids [state]
+  "Removes asteroids that are past the screen."
+  (let [asteroids (:asteroids state)]
+    (assoc state :asteroids (reduce (fn [asteroids asteroid]
+                                      (if (< (:y asteroid) (:y size))
+                                        (conj asteroids asteroid)
+                                        (identity asteroids)))
+                                    []
+                                    asteroids))))
+
+(defn update-state [state]
+  (-> state
+      generate-asteroid
+      update-asteroids
+      remove-old-asteroids
+      update-laser-shots
+      laser-hits))
+
+(defn draw-asteroids [asteroids]
+  (doseq [asteroid asteroids]
+    (let [x (:x asteroid)
+          y (:y asteroid)
+          size (:size asteroid)]
+      (q/ellipse x y size size))))
 
 (defn draw-state [state]
   (let [x (:x state)
         y (:y state)
-        laser-shots (:laser-shots state)]
+        laser-shots (:laser-shots state)
+        asteroids (:asteroids state)]
     (q/background 245)
-    (draw-triangle x y)
+    (draw-asteroids asteroids)
     (if (not (empty? laser-shots))
-      (draw-laser-shots laser-shots))))
+      (draw-laser-shots laser-shots))
+    (draw-triangle x y)))
+
 
 (defn mouse-moved [state event]
   (-> state
@@ -81,7 +152,7 @@
   (let [x (:x state)
         y (:y state)
         laser-shots (:laser-shots state)]
-    (assoc state :laser-shots (conj laser-shots [x y]))))
+    (assoc state :laser-shots (conj laser-shots {:x x :y y}))))
 
 (defn handle-key-press [state event]
   (if (= (:key-code event) 32)
