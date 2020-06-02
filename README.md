@@ -1,9 +1,6 @@
 # Space adventure!
 A small game I made for fun.
 
-## Try it out!
-http://miikargh.github.io/
-
 ## Setup
 
 To get an interactive development environment run:
